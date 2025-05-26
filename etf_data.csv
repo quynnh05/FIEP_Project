@@ -1,0 +1,6 @@
+Name,Ticker,Asset Class,Region,TER,Provider
+Vanguard Total World Stock,VT,Equities,Global,0.07%,Vanguard
+iShares MSCI Emerging Markets,IEEM,Equities,Emerging Markets,0.18%,iShares
+iShares Core Global Aggregate Bond,AGGG,Bonds,Global,0.10%,iShares
+SPDR Gold Shares,GLD,Commodities,Gold,0.40%,SPDR
+Vanguard Real Estate ETF,VNQ,Real Estate,US,0.12%,Vanguard

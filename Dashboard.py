@@ -4,10 +4,13 @@ import plotly.express as px
 import pandas as pd
 from scraper import fetch_market_cap_data
 
-# Fetch data from scraper
+# Fetch live market cap data
 df = fetch_market_cap_data()
 
-# Create the pie chart
+# Load ETF mapping
+etf_df = pd.read_csv("etf_data.csv")
+
+# Build pie chart
 fig = px.pie(
     df,
     names="Asset",
@@ -17,15 +20,26 @@ fig = px.pie(
 )
 fig.update_traces(textinfo='percent+label')
 
-# Initialize Dash app
+# Build Dash app
 app = dash.Dash(__name__)
+app.title = "Global Market Portfolio Dashboard"
 
-# Define layout
-app.layout = html.Div(children=[
-    html.H1("Global Portfolio Dashboard", style={"textAlign": "center"}),
-    dcc.Graph(figure=fig)
+app.layout = html.Div([
+    html.H1("🌍 Global Market Portfolio Dashboard"),
+
+    dcc.Graph(figure=fig),
+
+    html.H2("💼 ETF Implementation Suggestions"),
+    html.P("These low-cost ETFs are mapped to global asset classes."),
+
+    html.Table([
+        html.Thead(html.Tr([html.Th(col) for col in etf_df.columns])),
+        html.Tbody([
+            html.Tr([html.Td(etf_df.iloc[i][col]) for col in etf_df.columns])
+            for i in range(len(etf_df))
+        ])
+    ], style={"width": "100%", "border": "1px solid gray", "margin-top": "20px"})
 ])
 
-# Run the app
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True)

@@ -1,0 +1,19 @@
+sector,etf_name,ticker,price,return_5y,weight,isin,ter
+Information Technology,iShares MSCI World Info Tech ETF,WTEC.L,30.5,0.72,0.108,IE00BM67HN09,0.25%
+Financials,Financial Select Sector SPDR Fund,XLF,40.1,0.43,0.072,IE00BM67HK77,0.25%
+Health Care,iShares MSCI World Health Care ETF,WHEA.L,28.3,0.55,0.054,IE00BM67HT60,0.25%
+Consumer Discretionary,Consumer Discretionary Select Sector SPDR Fund,XLY,170.3,0.68,0.049,IE00BM67HN58,0.25%
+Industrials,iShares MSCI World Industrials ETF,WIND.L,25.8,0.47,0.045,IE00BM67HQ30,0.25%
+Communication Services,iShares MSCI World Comm Services ETF,WCOM.L,19.6,0.39,0.04,IE00BM67HP48,0.25%
+Consumer Staples,Consumer Staples Select Sector SPDR Fund,XLP,74.2,0.36,0.031,IE00BM67HR47,0.25%
+Energy,iShares MSCI World Energy ETF,WNRG.L,21.5,0.51,0.022,IE00BM67HM91,0.25%
+Materials,iShares MSCI World Materials ETF,WMAT.L,33.1,0.37,0.013,IE00BM67HL84,0.25%
+Utilities,iShares MSCI World Utilities ETF,WUTI.L,27.9,0.41,0.009,IE00BM67HS53,0.25%
+Real Estate,iShares Developed Markets Prop Yield ETF,IWDP.L,22.2,0.22,0.005,IE00B1FZS350,0.59%
+Government Bonds,iShares Global Government Bond ETF,IBGL.L,104.3,0.09,0.21,IE00B3VWN393,0.20%
+Investment Grade Bonds,iShares Global Corporate Bond ETF,IBGS.L,98.7,0.07,0.092,IE00B3F81R35,0.20%
+Securitized Bonds,iShares MBS ETF,MBB,91.5,0.04,0.05,IE00B4L5Y983,0.20%
+Private Equity,Invesco Global Listed Private Equity ETF,PSP,48.7,0.65,0.045,IE00B1TXHL60,0.75%
+Gold,iShares Physical Gold ETC,SGLN.L,34.8,0.32,0.029,IE00B4ND3602,0.19%
+Cryptocurrency,Bitcoin USD Spot,BTC-USD,68000.0,2.42,0.023,CH0454664001,1.49%
+Cash & Liquidity,SPDR Bloomberg 1-3 Month T-Bill ETF,BIL,91.2,0.01,0.055,IE00BCRY6557,0.10%

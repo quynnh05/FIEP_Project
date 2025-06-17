@@ -1,0 +1,313 @@
+import dash
+from dash import dcc, html, Input, Output, State
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import datetime
+import yfinance as yf
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from docx import Document
+
+# === Load ETF data from CSV ===
+etf_df = pd.read_csv("data_app2.csv")
+asset_classes = {row['sector']: row for _, row in etf_df.iterrows()}
+
+# === Historical data ===
+start_date = datetime.datetime.now() - datetime.timedelta(days=365 * 5)
+end_date = datetime.datetime.now()
+
+price_data = pd.DataFrame()
+for sector, row in asset_classes.items():
+    ticker = row['ticker']
+    data = yf.download(ticker, start=start_date, end=end_date, auto_adjust=True, progress=False)
+    if not data.empty and 'Close' in data.columns:
+        price_data[sector] = data['Close']
+
+price_data.dropna(inplace=True)
+returns = price_data.pct_change().dropna()
+valid_assets = list(price_data.columns)
+weights = np.array([asset_classes[asset]['weight'] for asset in valid_assets])
+returns['Global Portfolio'] = returns[valid_assets].dot(weights)
+cumulative_returns = (1 + returns).cumprod()
+annualized_return = (cumulative_returns.iloc[-1]) ** (1 / 5) - 1
+annualized_volatility = returns.std() * np.sqrt(252)
+sharpe_ratio = annualized_return / annualized_volatility
+correlation_matrix = returns.corr()
+rolling_volatility = returns.rolling(window=90).std() * np.sqrt(252)
+drawdowns = (cumulative_returns / cumulative_returns.cummax()) - 1
+max_drawdowns = drawdowns.min()
+
+app = dash.Dash(__name__)
+app.title = "Globallo"
+
+app.index_string = """<!DOCTYPE html>
+<html>
+<head>
+    {%metas%}
+    <title>{%title%}</title>
+    {%favicon%}
+    {%css%}
+    <style>
+        body {
+            background-color: #121212;
+            color: #f0f0f0;
+        }
+        .custom-table, .custom-table th, .custom-table td {
+            border: 1px solid gray !important;
+            padding: 8px;
+            border-collapse: collapse;
+        }
+    </style>
+</head>
+<body>
+    {%app_entry%}
+    <footer>
+        {%config%}
+        {%scripts%}
+        {%renderer%}
+    </footer>
+</body>
+</html>"""
+
+app.layout = html.Div(id='main-div', children=[
+    html.Div([
+        html.Img(src="/assets/globallo_logo.png", style={"height": "60px", "marginRight": "15px"}),
+        html.H1("Globallo", style={"fontSize": "36px", "margin": "0", "lineHeight": "60px"}),
+    ], style={"display": "flex", "alignItems": "center", "justifyContent": "center", "marginBottom": "10px"}),
+
+    dcc.RadioItems(
+        id='theme-toggle',
+        options=[{'label': 'Light Mode', 'value': 'light'}, {'label': 'Dark Mode', 'value': 'dark'}],
+        value='light',
+        style={'textAlign': 'center', 'marginBottom': '20px'}
+    ),
+
+    html.Div(f"Data from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}", style={'textAlign': 'center'}),
+
+    dcc.Tabs(id="tabs", value='overview', children=[
+        dcc.Tab(label="📊 Overview", value='overview', children=[
+            html.H3("📌 Actual Global Portfolio Allocation (Market Cap-Based)", style={"textAlign": "center", "fontWeight": "bold"}),
+            dcc.Graph(id='pie-chart'),
+            html.P("This chart illustrates the market-cap weighted allocation of asset classes globally."),
+
+            html.H3("📌 Performance Summary", style={"textAlign": "center", "fontWeight": "bold"}),
+            html.Div(id='performance-table'),
+            html.P("Summarizes annualized return, volatility, Sharpe ratio, and max drawdown."),
+
+            html.H3("📌 Cumulative Return Over Time", style={"textAlign": "center", "fontWeight": "bold"}),
+            dcc.Graph(id='cumulative-return-chart'),
+            html.P("Shows how $1 would grow over time across different ETFs.")
+        ]),
+
+        dcc.Tab(label="📈 Risk & Correlation", value='risk', children=[
+            html.H3("📌 90-Day Rolling Volatility", style={"textAlign": "center", "fontWeight": "bold"}),
+            dcc.Graph(id='rolling-vol-chart'),
+            html.P("Volatility trend over time for each ETF."),
+
+            html.H3("📌 Correlation Matrix", style={"textAlign": "center", "fontWeight": "bold"}),
+            dcc.Graph(id='corr-matrix'),
+            html.P("Visual representation of correlations between asset classes."),
+
+            html.H3("📌 Drawdown Analysis", style={"textAlign": "center", "fontWeight": "bold"}),
+            dcc.Dropdown(id='drawdown-asset-selector',
+                         options=[{'label': col, 'value': col} for col in drawdowns.columns],
+                         value='Global Portfolio'),
+            dcc.Graph(id='drawdown-chart'),
+            html.P("Historical drawdown chart for selected asset.")
+        ]),
+
+        dcc.Tab(label="💡 ETF Implementation", value='etf', children=[
+            html.H3("📌 How to Invest in the Global Portfolio", style={"textAlign": "center", "fontWeight": "bold"}),
+            html.Label("💰 Investment Amount ($):"),
+            dcc.Slider(id='amount-slider', min=1000, max=100000, step=1000, value=10000,
+                       marks={i: f"${i:,}" for i in range(1000, 100001, 25000)},
+                       tooltip={"placement": "bottom", "always_visible": True}),
+            html.Div(id='etf-breakdown'),
+            html.Div([
+                html.Button("⬇️ Download CSV", id="download-etf-btn-csv", style={"marginRight": "10px"}),
+                html.Button("⬇️ Download PDF", id="download-etf-btn-pdf", style={"marginRight": "10px"}),
+                html.Button("⬇️ Download DOCX", id="download-etf-btn-docx")
+            ], style={"textAlign": "center", "marginTop": "20px"}),
+            dcc.Download(id="download-etf-csv"),
+            dcc.Download(id="download-etf-pdf"),
+            dcc.Download(id="download-etf-docx")
+        ])
+    ])
+])
+
+@app.callback(Output('main-div', 'style'), Input('theme-toggle', 'value'))
+def update_background(theme):
+    return {
+        'backgroundColor': "#121212" if theme == 'dark' else "#f7f0e8",
+        'color': "#f0f0f0" if theme == 'dark' else "#000000",
+        'fontFamily': 'Segoe UI, sans-serif',
+        'padding': '20px',
+        'minHeight': '100vh'
+    }
+
+@app.callback(Output('pie-chart', 'figure'), Input('theme-toggle', 'value'))
+def update_pie_chart(theme):
+    fig = px.pie(names=etf_df['sector'], values=etf_df['weight'], hole=0.45)
+    fig.update_layout(title="Global Asset Class Allocation", template='plotly_dark' if theme == 'dark' else 'plotly_white')
+    return fig
+
+@app.callback(Output('cumulative-return-chart', 'figure'), Input('theme-toggle', 'value'))
+def update_cumulative_return(theme):
+    fig = px.line(cumulative_returns, x=cumulative_returns.index, y=cumulative_returns.columns)
+    fig.update_layout(title="Cumulative Return Over Time", template='plotly_dark' if theme == 'dark' else 'plotly_white')
+    return fig
+
+@app.callback(Output('performance-table', 'children'), Input('theme-toggle', 'value'))
+def update_performance_table(theme):
+    return html.Table(className="custom-table", children=[
+        html.Thead(html.Tr([html.Th(c) for c in ["Asset Class", "Annualized Return", "Volatility", "Sharpe Ratio", "Max Drawdown"]])),
+        html.Tbody([
+            html.Tr([
+                html.Td(col),
+                html.Td(f"{annualized_return[col]:.2%}"),
+                html.Td(f"{annualized_volatility[col]:.2%}"),
+                html.Td(f"{sharpe_ratio[col]:.2f}"),
+                html.Td(f"{max_drawdowns[col]:.2%}")
+            ]) for col in cumulative_returns.columns
+        ])
+    ], style={"width": "90%", "margin": "0 auto", "textAlign": "center", "border": "1px solid gray", "borderCollapse": "collapse", "borderSpacing": "0"})
+
+@app.callback(Output('rolling-vol-chart', 'figure'), Input('theme-toggle', 'value'))
+def update_rolling_vol(theme):
+    fig = go.Figure()
+    for col in rolling_volatility.columns:
+        fig.add_trace(go.Scatter(x=rolling_volatility.index, y=rolling_volatility[col], mode='lines', name=col))
+    fig.update_layout(template='plotly_dark' if theme == 'dark' else 'plotly_white')
+    return fig
+
+@app.callback(Output('corr-matrix', 'figure'), Input('theme-toggle', 'value'))
+def update_corr_matrix(theme):
+    fig = px.imshow(correlation_matrix, text_auto=True, aspect="auto")
+    fig.update_layout(title="Correlation Matrix", template='plotly_dark' if theme == 'dark' else 'plotly_white')
+    return fig
+
+@app.callback(Output('drawdown-chart', 'figure'), Input('drawdown-asset-selector', 'value'), State('theme-toggle', 'value'))
+def update_drawdown_chart(asset, theme):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=drawdowns.index, y=drawdowns[asset], mode='lines', name=asset))
+    fig.update_layout(title=f"Drawdown Over Time: {asset}", template='plotly_dark' if theme == 'dark' else 'plotly_white')
+    return fig
+
+@app.callback(Output('etf-breakdown', 'children'), Input('amount-slider', 'value'), State('theme-toggle', 'value'))
+def update_etf_allocation(amount, theme):
+    rows = []
+    total_alloc = 0
+    cash_left = 0
+    for _, etf in etf_df.iterrows():
+        price = etf['price']
+        weight = etf['weight']
+        alloc = amount * weight
+        shares = int(alloc // price)
+        spent = shares * price
+        remaining = alloc - spent
+        total_alloc += spent
+        cash_left += remaining
+        rows.append(html.Tr([
+            html.Td(etf['sector']), html.Td(etf['etf_name']), html.Td(etf['ticker']), html.Td(etf['isin']),
+            html.Td(f"${price:.2f}"), html.Td(f"{weight:.2%}"), html.Td(f"{shares}"),
+            html.Td(f"${spent:.2f}"), html.Td(f"${remaining:.2f}")
+        ]))
+    rows.append(html.Tr([html.Td("Total", colSpan=7), html.Td(f"${total_alloc:.2f}"), html.Td(f"${cash_left:.2f}")]))
+    return html.Table(className="custom-table", children=[
+        html.Thead(html.Tr([
+            html.Th("Sector"), html.Th("ETF Name"), html.Th("Ticker"), html.Th("ISIN"),
+            html.Th("Price"), html.Th("Weight"), html.Th("Shares"),
+            html.Th("Cost"), html.Th("Cash Left")
+        ])),
+        html.Tbody(rows)
+    ], style={"width": "100%", "textAlign": "center", "border": "1px solid gray", "borderCollapse": "collapse", "borderSpacing": "0"})
+
+def build_etf_dataframe(amount):
+    output = []
+    for _, etf in etf_df.iterrows():
+        price = etf['price']
+        weight = etf['weight']
+        alloc = amount * weight
+        shares = int(alloc // price)
+        spent = shares * price
+        remaining_cash = alloc - spent
+        output.append({
+            "Sector": etf['sector'],
+            "ETF Name": etf['etf_name'],
+            "Ticker": etf['ticker'],
+            "ISIN": etf['isin'],
+            "Price": f"${price:.2f}",
+            "Weight": f"{weight:.2%}",
+            "Shares": shares,
+            "Cost": f"${spent:.2f}",
+            "Cash Left": f"${remaining_cash:.2f}"
+        })
+    return pd.DataFrame(output)
+
+@app.callback(
+    Output("download-etf-csv", "data"),
+    Input("download-etf-btn-csv", "n_clicks"),
+    State("amount-slider", "value"),
+    prevent_initial_call=True
+)
+def download_csv(n, amount):
+    df = build_etf_dataframe(amount)
+    return dcc.send_data_frame(df.to_csv, "etf_allocation.csv", index=False)
+
+@app.callback(
+    Output("download-etf-pdf", "data"),
+    Input("download-etf-btn-pdf", "n_clicks"),
+    State("amount-slider", "value"),
+    prevent_initial_call=True
+)
+def generate_pdf(n_clicks, amount):
+    df = build_etf_dataframe(amount)
+    data = [df.columns.tolist()] + df.values.tolist()
+
+    pdf_path = "etf_allocation.pdf"
+    doc = SimpleDocTemplate(pdf_path, pagesize=landscape(A4))
+    style = getSampleStyleSheet()["BodyText"]
+    style.wordWrap = 'CJK'
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+    ]))
+
+    doc.build([table])
+    return dcc.send_file(pdf_path)
+
+@app.callback(
+    Output("download-etf-docx", "data"),
+    Input("download-etf-btn-docx", "n_clicks"),
+    State("amount-slider", "value"),
+    prevent_initial_call=True
+)
+def download_docx(n, amount):
+    df = build_etf_dataframe(amount)
+    doc = Document()
+    doc.add_heading("ETF Allocation Table", level=1)
+    table = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = table.rows[0].cells
+    for i, col in enumerate(df.columns):
+        hdr_cells[i].text = str(col)
+    for _, row in df.iterrows():
+        row_cells = table.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
+    docx_path = "etf_allocation.docx"
+    doc.save(docx_path)
+    return dcc.send_file(docx_path)
+
+if __name__ == "__main__":
+    app.run(debug=True)
